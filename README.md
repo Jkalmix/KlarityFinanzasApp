@@ -25,6 +25,7 @@
 #pip install pillow
 #pip install pyrebase4
 #pip install firebase
+#pip install matplotlib
 * **Python 3.12.4**
 * **Tkinter:** Para la interfaz gráfica de usuario.
 * **Pillow (PIL):** Para el manejo de imágenes (ej. logos).
