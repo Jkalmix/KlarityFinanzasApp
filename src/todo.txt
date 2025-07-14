@@ -1,0 +1,2023 @@
+# main.py
+
+import tkinter as tk
+from ui_splash import SplashScreen
+import ui_login as login
+
+def main():
+    root = tk.Tk()
+    root.withdraw()  # ventana raíz oculta
+
+    def after_splash():
+        login.start(root)
+
+    SplashScreen(root, after_splash).show()
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
+
+# firebase_service.py
+# Inicializa Firebase (Pyrebase & Admin SDK) y expone funciones CRUD
+# para usuarios, perfil (ruta local de foto), categorías, transacciones,
+# sugerencias de IA y cambio de contraseña.
+
+import os
+import sys
+import time
+from typing import Tuple, Optional, Dict
+
+import pyrebase
+import firebase_admin
+from firebase_admin import credentials, auth as admin_auth
+
+# ─── Añadimos config al path ─────────────────────────────────────────
+current_dir = os.path.dirname(os.path.abspath(__file__))
+config_dir = os.path.join(current_dir, '..', 'config')
+if config_dir not in sys.path:
+    sys.path.append(config_dir)
+
+from firebase_config import FIREBASE_CONFIG, SERVICE_ACCOUNT_KEY_PATH
+
+# ─── Inicialización Pyrebase (cliente) ─────────────────────────────
+firebase = pyrebase.initialize_app(FIREBASE_CONFIG)
+auth = firebase.auth()
+db = firebase.database()
+
+# ─── Inicialización Admin SDK (para operaciones de administrador) ───
+if not firebase_admin._apps:
+    cred = credentials.Certificate(SERVICE_ACCOUNT_KEY_PATH)
+    firebase_admin.initialize_app(cred)
+
+# ─── AUTH ────────────────────────────────────────────────────────────
+def register_user(email: str, password: str) -> Tuple[Optional[Dict], Optional[str]]:
+    try:
+        user = auth.create_user_with_email_and_password(email, password)
+        return user, None
+    except Exception as e:
+        return None, str(e)
+
+
+def login_user(email: str, password: str) -> Tuple[Optional[Dict], Optional[str]]:
+    try:
+        user = auth.sign_in_with_email_and_password(email, password)
+        return user, None
+    except Exception as e:
+        msg = str(e)
+        # Interceptar mensajes de credenciales inválidas
+        if "INVALID_LOGIN_CREDENTIALS" in msg or "Invalid password" in msg:
+            friendly = "Usuario o contraseña incorrectos."
+        else:
+            friendly = "Error al iniciar sesión. Por favor, inténtalo de nuevo."
+        return None, friendly
+
+# ─── PERFIL ──────────────────────────────────────────────────────────
+def create_or_update_profile(uid: str, data: dict) -> Tuple[bool, Optional[str]]:
+    try:
+        db.child("usuarios").child(uid).update(data)
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def get_profile(uid: str) -> Tuple[Dict, Optional[str]]:
+    try:
+        snap = db.child("usuarios").child(uid).get()
+        return snap.val() or {}, None
+    except Exception as e:
+        return {}, str(e)
+
+# ─── CATEGORÍAS ──────────────────────────────────────────────────────
+def add_category(uid: str, data: dict) -> Tuple[Optional[str], Optional[str]]:
+    try:
+        key = db.child("categorias").child(uid).push(data)["name"]
+        return key, None
+    except Exception as e:
+        return None, str(e)
+
+
+def get_categories(uid: str) -> Tuple[Dict, Optional[str]]:
+    try:
+        snap = db.child("categorias").child(uid).get()
+        return snap.val() or {}, None
+    except Exception as e:
+        return {}, str(e)
+
+
+def update_category(uid: str, key: str, updates: dict) -> Tuple[bool, Optional[str]]:
+    try:
+        db.child("categorias").child(uid).child(key).update(updates)
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def delete_category(uid: str, key: str) -> Tuple[bool, Optional[str]]:
+    try:
+        db.child("categorias").child(uid).child(key).remove()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+# ─── TRANSACCIONES ───────────────────────────────────────────────────
+def add_transaction(uid: str, data: dict) -> Tuple[Optional[str], Optional[str]]:
+    try:
+        key = db.child("transacciones").child(uid).push(data)["name"]
+        return key, None
+    except Exception as e:
+        return None, str(e)
+
+
+def get_transactions(uid: str) -> Tuple[Dict, Optional[str]]:
+    try:
+        snap = db.child("transacciones").child(uid).get()
+        return snap.val() or {}, None
+    except Exception as e:
+        return {}, str(e)
+
+
+def get_single_transaction(uid: str, key: str) -> Tuple[Optional[Dict], Optional[str]]:
+    try:
+        snap = db.child("transacciones").child(uid).child(key).get()
+        return snap.val() or None, None
+    except Exception as e:
+        return None, str(e)
+
+
+def update_transaction(uid: str, key: str, updates: dict) -> Tuple[bool, Optional[str]]:
+    try:
+        db.child("transacciones").child(uid).child(key).update(updates)
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def delete_transaction(uid: str, key: str) -> Tuple[bool, Optional[str]]:
+    try:
+        db.child("transacciones").child(uid).child(key).remove()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+# ─── SUGERENCIAS DE IA ───────────────────────────────────────────────
+def save_ai_suggestion(uid: str, text: str) -> None:
+    ts = int(time.time())
+    db.child("ai_sugerencias").child(uid).child(str(ts)).set({
+        "texto": text,
+        "ts": ts
+    })
+
+
+def get_ai_suggestions(uid: str) -> Tuple[Dict, Optional[str]]:
+    try:
+        snap = db.child("ai_sugerencias").child(uid).get()
+        return snap.val() or {}, None
+    except Exception as e:
+        return {}, str(e)
+
+
+def delete_ai_suggestion(uid: str, ts: int) -> Tuple[bool, Optional[str]]:
+    try:
+        db.child("ai_sugerencias").child(uid).child(str(ts)).remove()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+# ─── CATEGORÍAS POR DEFECTO ──────────────────────────────────────────
+from constants import DEFAULT_CATEGORIES
+
+def ensure_default_categories(uid: str) -> None:
+    cats, _ = get_categories(uid)
+    if cats:
+        return
+    for cat in DEFAULT_CATEGORIES:
+        add_category(uid, cat)
+
+# ─── CAMBIO DE CONTRASEÑA ────────────────────────────────────────────
+def reauthenticate_user(email: str, password: str) -> Tuple[bool, Optional[str]]:
+    """
+    Re-autentica al usuario con email/password.
+    Devuelve (True, None) si OK, o (False, mensaje_error).
+    """
+    try:
+        auth.sign_in_with_email_and_password(email, password)
+        return True, None
+    except Exception as e:
+        msg = str(e)
+        if "INVALID_LOGIN_CREDENTIALS" in msg or "Invalid password" in msg:
+            return False, "Contraseña actual incorrecta."
+        return False, "Error de autenticación."
+
+
+def update_password(user_or_uid, new_password: str) -> Tuple[bool, Optional[str]]:
+    """
+    Cambia la contraseña vía Admin SDK.
+    user_or_uid puede ser el dict de user o directamente el uid.
+    """
+    try:
+        uid = user_or_uid['localId'] if isinstance(user_or_uid, dict) else user_or_uid
+        admin_auth.update_user(uid, password=new_password)
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+# ui_ai_advisor.py
+# Integra Gemini (Google Generative AI) para dar consejos financieros,
+# resúmenes y planes de mejora, con historial y consulta libre.
+
+
+import os
+import sys
+import json
+import tkinter as tk
+from tkinter import messagebox, scrolledtext, ttk
+from datetime import datetime, date
+from tkcalendar import DateEntry
+
+from constants import COLOR_FONDO_GRIS, COLOR_PRINCIPAL_AZUL, COLOR_VERDE_CRECIMIENTO, COLOR_BLANCO, FONT_TITLE, FONT_NORMAL
+from utils import clear_frame
+import firebase_service as fb
+
+# ─── Configuración de acceso a config/gemini_config.py ───────────────
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, '..'))
+config_dir = os.path.join(project_root, 'config')
+if config_dir not in sys.path:
+    sys.path.append(config_dir)
+from gemini_config import GEMINI_API_KEY
+
+# ─── Inicialización de Gemini ─────────────────────────────────────────
+model = None
+try:
+    import google.generativeai as genai
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel("gemini-1.5-flash-latest")
+except Exception as e:
+    print(f"[ui_ai_advisor] No se pudo inicializar Gemini: {e}")
+
+def build(frame: tk.Frame, user: dict):
+    """Construye la UI del asistente financiero."""
+    clear_frame(frame)
+    uid = user['localId']
+
+    # ─── Obtener rango de fechas de todas las transacciones ─────────────
+    raw, _ = fb.get_transactions(uid)
+    fechas = [datetime.fromtimestamp(v['fecha']).date()
+              for v in (raw or {}).values() if 'fecha' in v]
+    if fechas:
+        min_date, max_date = min(fechas), max(fechas)
+    else:
+        max_date = date.today()
+        min_date = max_date
+
+    # ─── Controles superiores: filtros y modos rápidos ──────────────────
+    ctrl = tk.Frame(frame, bg=COLOR_FONDO_GRIS)
+    ctrl.pack(fill="x", padx=10, pady=(5,2))
+
+    # Fecha Desde
+    tk.Label(ctrl, text="Desde:", font=FONT_NORMAL,
+             bg=COLOR_FONDO_GRIS, fg=COLOR_PRINCIPAL_AZUL).pack(side="left")
+    date_from = DateEntry(ctrl, date_pattern="yyyy-mm-dd",
+                          mindate=min_date, maxdate=max_date)
+    date_from.set_date(min_date)
+    date_from.pack(side="left", padx=4)
+
+    # Fecha Hasta
+    tk.Label(ctrl, text="Hasta:", font=FONT_NORMAL,
+             bg=COLOR_FONDO_GRIS, fg=COLOR_PRINCIPAL_AZUL).pack(side="left")
+    date_to = DateEntry(ctrl, date_pattern="yyyy-mm-dd",
+                        mindate=min_date, maxdate=max_date)
+    date_to.set_date(max_date)
+    date_to.pack(side="left", padx=4)
+
+    # Botones de modo rápido
+    def _generate(template: str):
+        if model is None:
+            messagebox.showerror("API", "Gemini no está configurado.", parent=frame)
+            return
+        # filtrado
+        d0 = datetime.combine(date_from.get_date(), datetime.min.time()).timestamp()
+        d1 = datetime.combine(date_to.get_date(), datetime.min.time()).timestamp() + 86400
+        txs = [v for v in (raw or {}).values() if d0 <= v['fecha'] < d1]
+        if not txs:
+            messagebox.showinfo("Sin datos", "No hay transacciones en ese rango.", parent=frame)
+            return
+        prompt = template.format(
+            desde=date_from.get_date().isoformat(),
+            hasta=date_to.get_date().isoformat(),
+            json_txs=json.dumps(txs, indent=2)
+        )
+        out.delete("1.0", tk.END)
+        out.insert(tk.END, "Generando, por favor espera...")
+        frame.update_idletasks()
+        try:
+            resp = model.generate_content(prompt).text
+        except Exception as e:
+            messagebox.showerror("Error API", str(e), parent=frame)
+            return
+        # guardar y mostrar
+        fb.save_ai_suggestion(uid, resp)
+        out.delete("1.0", tk.END)
+        out.insert(tk.END, resp)
+        load_history()
+
+    tk.Button(ctrl, text="Resumen",
+              bg=COLOR_PRINCIPAL_AZUL, fg=COLOR_BLANCO,
+              font=FONT_NORMAL,
+              command=lambda: _generate(
+                  "Resume mis transacciones entre {desde} y {hasta}:\n{json_txs}"
+              )).pack(side="left", padx=4)
+    tk.Button(ctrl, text="Consejos",
+              bg=COLOR_VERDE_CRECIMIENTO, fg=COLOR_BLANCO,
+              font=FONT_NORMAL,
+              command=lambda: _generate(
+                  "Basado en mis transacciones entre {desde} y {hasta}, dame 3 consejos breves para mejorar mis finanzas:\n{json_txs}"
+              )).pack(side="left", padx=4)
+    tk.Button(ctrl, text="Plan de mejora",
+              bg="#E67E22", fg=COLOR_BLANCO,
+              font=FONT_NORMAL,
+              command=lambda: _generate(
+                  "Basado en mis transacciones entre {desde} y {hasta}, elabora un plan de mejora en 3 pasos:\n{json_txs}"
+              )).pack(side="left", padx=4)
+
+    # ─── Consulta libre ────────────────────────────────────────────────
+    qframe = tk.Frame(frame, bg=COLOR_FONDO_GRIS)
+    qframe.pack(fill="x", padx=10, pady=(2,5))
+    tk.Label(qframe, text="Consulta libre:",
+             font=FONT_NORMAL, bg=COLOR_FONDO_GRIS,
+             fg=COLOR_PRINCIPAL_AZUL).pack(side="left")
+    entry_q = tk.Entry(qframe, width=50)
+    entry_q.pack(side="left", padx=4)
+    def _free():
+        if model is None:
+            messagebox.showerror("API", "Gemini no está configurado.", parent=frame)
+            return
+        question = entry_q.get().strip()
+        if not question:
+            return
+        prompt = f"{question}\n\nAquí están mis transacciones:\n{json.dumps(list((raw or {}).values()), indent=2)}"
+        out.delete("1.0", tk.END)
+        out.insert(tk.END, "Generando respuesta…")
+        frame.update_idletasks()
+        try:
+            resp = model.generate_content(prompt).text
+        except Exception as e:
+            messagebox.showerror("Error API", str(e), parent=frame)
+            return
+        fb.save_ai_suggestion(uid, resp)
+        out.delete("1.0", tk.END)
+        out.insert(tk.END, resp)
+        load_history()
+    tk.Button(qframe, text="Enviar", bg=COLOR_PRINCIPAL_AZUL,
+              fg=COLOR_BLANCO, font=FONT_NORMAL,
+              command=_free).pack(side="left", padx=4)
+
+    # ─── Área de salida ───────────────────────────────────────────────
+    out = scrolledtext.ScrolledText(frame, wrap="word", height=12)
+    out.pack(fill="both", expand=True, padx=10, pady=5)
+
+    # ─── Historial de sugerencias ─────────────────────────────────────
+    hframe = tk.Frame(frame, bg=COLOR_FONDO_GRIS)
+    hframe.pack(fill="both", expand=False, padx=10, pady=(0,10))
+    tk.Label(hframe, text="Historial de sugerencias:",
+             font=FONT_TITLE, bg=COLOR_FONDO_GRIS,
+             fg=COLOR_PRINCIPAL_AZUL).pack(anchor="w")
+
+    cols = ("Fecha", "Extracto")
+    tree = ttk.Treeview(hframe, columns=cols, show="headings", height=5)
+    for c in cols:
+        tree.heading(c, text=c)
+        tree.column(c, anchor="w")
+    tree.pack(side="left", fill="both", expand=True)
+
+    sb = ttk.Scrollbar(hframe, command=tree.yview)
+    tree.configure(yscrollcommand=sb.set)
+    sb.pack(side="right", fill="y")
+
+    # ─── Funciones de historial ────────────────────────────────────────
+    def load_history():
+        tree.delete(*tree.get_children())
+        suggestions, _ = fb.get_ai_suggestions(uid)
+        for ts_str, rec in sorted(suggestions.items(), reverse=True):
+            try:
+                dt = datetime.fromtimestamp(int(ts_str)).strftime("%Y-%m-%d %H:%M")
+            except:
+                dt = ts_str
+            excerpt = rec["texto"].split("\n",1)[0]
+            tree.insert("", "end", iid=ts_str, values=(dt, excerpt))
+
+    def on_select(event):
+        sel = tree.selection()
+        if not sel:
+            return
+        ts = sel[0]
+        suggestions, _ = fb.get_ai_suggestions(uid)
+        text = suggestions.get(ts, {}).get("texto", "")
+        out.delete("1.0", tk.END)
+        out.insert(tk.END, text)
+
+    def delete_selected():
+        sel = tree.selection()
+        if not sel:
+            return
+        ts = sel[0]
+        if not messagebox.askyesno("Confirmar",
+                                   "¿Eliminar esta sugerencia?",
+                                   parent=frame):
+            return
+        fb.delete_ai_suggestion(uid, ts)
+        load_history()
+        out.delete("1.0", tk.END)
+
+    tree.bind("<<TreeviewSelect>>", on_select)
+
+    btn_del = tk.Button(hframe, text="Eliminar sugerencia",
+                        bg="#E74C3C", fg=COLOR_BLANCO,
+                        font=FONT_NORMAL, command=delete_selected)
+    btn_del.pack(pady=4)
+
+    # ─── Carga inicial del historial ───────────────────────────────────
+    load_history()
+
+# ui_categorias.py
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+from constants import *
+from utils import clear_frame
+import firebase_service as fb
+
+
+def build(frame: tk.Frame, user):
+    """
+    Construye la vista de gestión de categorías con:
+    - Toolbar superior con título e iconos
+    - Tabla con zebra striping y encabezados clicables para ordenar
+    - Modales para crear/editar con validaciones
+    - Confirmación de eliminación
+    """
+    clear_frame(frame)
+    uid = user['localId']
+
+    # ─── Toolbar superior ───────────────────────────────────────────
+    toolbar = tk.Frame(frame, bg=COLOR_FONDO_GRIS, padx=10, pady=6)
+    toolbar.pack(fill="x")
+
+    # Título con ícono (opcional)
+    title = tk.Label(toolbar, text="Categorías", font=("Lato", 28, "bold"),
+                     bg=COLOR_FONDO_GRIS, fg=COLOR_PRINCIPAL_AZUL)
+    title.pack(side="left")
+
+    # Contenedor de la tabla
+    container = tk.Frame(frame, bg=COLOR_FONDO_GRIS, padx=20, pady=10)
+    container.pack(fill="both", expand=True)
+
+    # Columnas
+    cols = ("Nombre", "Tipo")
+    tree = ttk.Treeview(container, columns=cols, show="headings")
+
+    # Estilo y zebra-striping
+    style = ttk.Style()
+    style.theme_use("clam")
+    style.configure("Treeview", rowheight=30, font=FONT_NORMAL)
+    style.map("Treeview",
+              background=[('selected', COLOR_VERDE_CRECIMIENTO)],
+              foreground=[('selected', COLOR_BLANCO)])
+    tree.tag_configure('odd', background='#FAFAFA')
+    tree.tag_configure('even', background='#FFFFFF')
+
+    # Estado de orden para cada columna
+    sort_reverse = {c: False for c in cols}
+
+    # ─── Funciones internas ─────────────────────────────────────────
+    def tag_rows():
+        for i, iid in enumerate(tree.get_children()):
+            tree.item(iid, tags=('odd' if i % 2 else 'even',))
+
+    def cargar(items=None):
+        tree.delete(*tree.get_children())
+        cats, _ = fb.get_categories(uid)
+        data_list = items if items is not None else list(cats.items())
+        if not data_list:
+            tree.insert('', 'end', values=('No hay categorías', ''), tags=('even',))
+            return
+        for k, v in data_list:
+            tree.insert('', 'end', iid=k, values=(v['nombre'], v['tipo']))
+        tag_rows()
+
+    def sort_by(col):
+        cats, _ = fb.get_categories(uid)
+        items = list(cats.items())
+        items.sort(key=lambda x: x[1][col.lower()], reverse=sort_reverse[col])
+        sort_reverse[col] = not sort_reverse[col]
+        cargar(items)
+
+    def modal_cat(cat=None, key=None):
+        is_edit = key is not None
+        m = tk.Toplevel(frame)
+        m.title("Editar Categoría" if is_edit else "Nueva Categoría")
+        m.configure(bg=COLOR_FONDO_GRIS)
+        m.grab_set()
+
+        tk.Label(m, text="Nombre:", bg=COLOR_FONDO_GRIS).grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        ent_name = tk.Entry(m, width=30)
+        ent_name.grid(row=0, column=1, padx=5, pady=5)
+
+        tk.Label(m, text="Tipo:", bg=COLOR_FONDO_GRIS).grid(row=1, column=0, sticky="e", padx=5, pady=5)
+        tipo_var = tk.StringVar(value="Gasto")
+        ttk.Radiobutton(m, text="Ingreso", variable=tipo_var, value="Ingreso").grid(row=1, column=1, sticky="w")
+        ttk.Radiobutton(m, text="Gasto", variable=tipo_var, value="Gasto").grid(row=1, column=1, sticky="e")
+
+        if is_edit and cat:
+            ent_name.insert(0, cat['nombre'])
+            tipo_var.set(cat['tipo'])
+
+        def guardar():
+            nombre = ent_name.get().strip()
+            if not nombre:
+                messagebox.showwarning("Atención", "El nombre es obligatorio.", parent=m)
+                return
+            datos = {"nombre": nombre, "tipo": tipo_var.get()}
+            if is_edit:
+                ok, err = fb.update_category(uid, key, datos)
+            else:
+                _, err = fb.add_category(uid, datos)
+                ok = (err is None)
+            if err or not ok:
+                messagebox.showerror("Error", err or "", parent=m)
+                return
+            m.destroy()
+            cargar()
+
+        btn_save = tk.Button(m, text="Guardar", bg=COLOR_VERDE_CRECIMIENTO,
+                             fg=COLOR_BLANCO, relief="flat",
+                             padx=12, pady=6, command=guardar)
+        btn_save.grid(row=2, columnspan=2, pady=10)
+
+    def eliminar():
+        sel = tree.selection()
+        if not sel:
+            return
+        key = sel[0]
+        if messagebox.askyesno("Confirmar eliminación",
+                               "¿Seguro que deseas eliminar esta categoría?", parent=frame):
+            ok, err = fb.delete_category(uid, key)
+            if err or not ok:
+                messagebox.showerror("Error", err or "", parent=frame)
+            cargar()
+
+    def modal_edit():
+        sel = tree.selection()
+        if sel:
+            cats_dict, _ = fb.get_categories(uid)
+            modal_cat(cats_dict[sel[0]], sel[0])
+
+    # ─── Configurar encabezados clicables ────────────────────────────
+    for c in cols:
+        tree.heading(c, text=c, anchor="w", command=lambda _c=c: sort_by(_c))
+
+    tree.pack(fill="both", expand=True)
+
+    # ─── Botones tras definir funciones ─────────────────────────────
+    btn_del = tk.Button(toolbar, text="🗑️ Eliminar", font=FONT_NORMAL,
+                        bg=COLOR_ROJO_GASTO, fg=COLOR_BLANCO, relief="flat",
+                        padx=12, pady=6, command=eliminar)
+    btn_del.pack(side="right", padx=(5,0))
+    btn_edit = tk.Button(toolbar, text="✎ Editar", font=FONT_NORMAL,
+                         bg=COLOR_PRINCIPAL_AZUL, fg=COLOR_BLANCO, relief="flat",
+                         padx=12, pady=6, command=modal_edit)
+    btn_edit.pack(side="right", padx=5)
+    btn_add = tk.Button(toolbar, text="+ Nueva", font=FONT_NORMAL,
+                        bg=COLOR_VERDE_CRECIMIENTO, fg=COLOR_BLANCO, relief="flat",
+                        padx=12, pady=6, command=lambda: modal_cat())
+    btn_add.pack(side="right", padx=(0,5))
+
+    # Carga inicial
+    cargar()
+
+# ui_dashboard.py – navegación + dashboard (periodos y gráficos dinámicos)
+
+import tkinter as tk
+from tkinter import ttk
+from datetime import datetime, date, timedelta
+from tkcalendar import DateEntry
+from constants import *
+from utils import clear_frame
+import firebase_service as fb
+import ui_transacciones as trans
+import ui_categorias as cats
+import ui_reportes as reps
+import ui_perfil as perfil
+import ui_ai_advisor as advisor
+import pandas as pd
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
+import os
+from PIL import Image, ImageTk, ImageOps, ImageDraw
+
+class DashboardWindow:
+    def __init__(self, root, user):
+        self.root, self.user = root, user
+        self.win = tk.Toplevel(root)
+        self.win.title("Klarity – Dashboard")
+        self.win.geometry("1024x720")
+        self.win.configure(bg=COLOR_FONDO_GRIS)
+        self._build_ui()
+
+    def _build_ui(self):
+        # ─── Barra lateral ─────────────────────────────────────────────────
+        nav = tk.Frame(self.win, bg=COLOR_PRINCIPAL_AZUL, width=220)
+        nav.pack(side="left", fill="y"); nav.pack_propagate(False)
+
+        # Logo
+        try:
+            logo = Image.open("assets/klarity_logo.png").resize((80, 80),
+                    Image.Resampling.LANCZOS)
+            ph_logo = ImageTk.PhotoImage(logo)
+            tk.Label(nav, image=ph_logo, bg=COLOR_PRINCIPAL_AZUL).pack(pady=(18, 8))
+            nav.logo = ph_logo
+        except:
+            tk.Label(nav, text="Klarity", font=("Lato", 24, "bold"),
+                     fg=COLOR_BLANCO, bg=COLOR_PRINCIPAL_AZUL).pack(pady=(22, 10))
+
+        items = [
+            ("Dashboard",     self._home),
+            ("Transacciones", lambda: trans.build(self.content, self.user)),
+            ("Categorías",    lambda: cats.build(self.content, self.user)),
+            ("Reportes",      lambda: reps.build(self.content, self.user)),
+            ("Asistente AI",  lambda: advisor.build(self.content, self.user)),
+            ("Perfil",        lambda: perfil.build(self.content, self.user)),
+        ]
+
+        self.btn_refs = {}; self.selected = None
+        def navegar(n, fn):
+            if self.selected:
+                self.selected.configure(bg=COLOR_PRINCIPAL_AZUL)
+            self.btn_refs[n].configure(bg=COLOR_VERDE_CRECIMIENTO)
+            self.selected = self.btn_refs[n]
+            fn()
+
+        for txt, fn in items:
+            b = tk.Button(nav, text=txt, font=FONT_MENU, fg=COLOR_BLANCO,
+                          bg=COLOR_PRINCIPAL_AZUL, relief="flat",
+                          anchor="w", padx=12, pady=10,
+                          command=lambda t=txt, f=fn: navegar(t, f))
+            b.pack(fill="x", pady=2)
+            self.btn_refs[txt] = b
+
+        tk.Button(nav, text="Cerrar Sesión", font=FONT_MENU,
+                  bg=COLOR_PELIGRO, fg=COLOR_BLANCO, relief="flat",
+                  activebackground=COLOR_PELIGRO,
+                  command=self._logout).pack(side="bottom", fill="x", pady=20)
+
+        # ─── Contenedor principal ──────────────────────────────────────────
+        self.content = tk.Frame(self.win, bg=COLOR_FONDO_GRIS)
+        self.content.pack(side="right", fill="both", expand=True)
+        self._home()
+
+    def _home(self):
+        clear_frame(self.content)
+        uid = self.user["localId"]
+
+        # ─── Header ───────────────────────────────────────────────────────
+        perfil_data, _ = fb.get_profile(uid)
+        nombre = perfil_data.get("nombre") or self.user["email"]
+        header = tk.Frame(self.content, bg=COLOR_FONDO_GRIS)
+        header.pack(fill="x", pady=(8, 4), padx=6)
+        tk.Label(header, text=f"¡Bienvenido/a {nombre}!",
+                 font=FONT_TITLE, bg=COLOR_FONDO_GRIS,
+                 fg=COLOR_PRINCIPAL_AZUL).pack(side="left")
+        foto_path = perfil_data.get("foto")
+        if foto_path and os.path.exists(foto_path):
+            try:
+                img = Image.open(foto_path).resize((60, 60),
+                                                   Image.Resampling.LANCZOS)
+                mask = Image.new("L", (60, 60), 0)
+                ImageDraw.Draw(mask).ellipse((0, 0, 60, 60), fill=255)
+                img = ImageOps.fit(img, (60, 60)); img.putalpha(mask)
+                ph = ImageTk.PhotoImage(img)
+                pic = tk.Label(header, image=ph, bg=COLOR_FONDO_GRIS,
+                               cursor="hand2")
+                pic.image = ph
+                pic.pack(side="right")
+                pic.bind("<Button-1>",
+                         lambda e: self.btn_refs["Perfil"].invoke())
+            except:
+                pass
+
+        # ─── Capturar rango total de datos ───────────────────────────────
+        raw, _ = fb.get_transactions(uid)
+        fechas = []
+        for v in (raw or {}).values():
+            if "fecha" in v:
+                fechas.append(datetime.fromtimestamp(v["fecha"]).date())
+        if fechas:
+            min_date = min(fechas)
+            max_date = max(fechas)
+        else:
+            max_date = date.today()
+            min_date = max_date - timedelta(days=30)
+
+        # ─── Filtro de periodo y rango ──────────────────────────────────
+        toolbar = tk.Frame(self.content, bg=COLOR_FONDO_GRIS)
+        toolbar.pack(fill="x", padx=6, pady=(0, 4))
+        tk.Label(toolbar, text="Periodo:",
+                 bg=COLOR_FONDO_GRIS, fg=COLOR_TEXTO_GRIS,
+                 font=FONT_NORMAL).pack(side="left")
+
+        opciones = ["Personalizado","Hoy","Semanal","Quincenal",
+                    "Mensual","Trimestral","Semestral","Anual"]
+        period_var = tk.StringVar(value="Mensual")
+        cb_period = ttk.Combobox(toolbar, values=opciones, width=12,
+                                 state="readonly", textvariable=period_var)
+        cb_period.pack(side="left", padx=4)
+
+        tk.Label(toolbar, text="Desde:",
+                 bg=COLOR_FONDO_GRIS, fg=COLOR_TEXTO_GRIS,
+                 font=FONT_NORMAL).pack(side="left")
+        date_from = DateEntry(toolbar, date_pattern="yyyy-mm-dd",
+                              mindate=min_date, maxdate=max_date)
+        date_from.pack(side="left", padx=4)
+        date_from.set_date(min_date)
+
+        tk.Label(toolbar, text="Hasta:",
+                 bg=COLOR_FONDO_GRIS, fg=COLOR_TEXTO_GRIS,
+                 font=FONT_NORMAL).pack(side="left")
+        date_to = DateEntry(toolbar, date_pattern="yyyy-mm-dd",
+                            mindate=min_date, maxdate=max_date)
+        date_to.pack(side="left", padx=4)
+        date_to.set_date(max_date)
+
+        btn_apply = ttk.Button(toolbar, text="Aplicar filtro")
+        btn_apply.pack(side="left", padx=6)
+
+        # ─── Toggles (¡sin bg=!) ───────────────────────────────────────
+        show_bar  = tk.BooleanVar(value=True)
+        show_pie  = tk.BooleanVar(value=True)
+        show_line = tk.BooleanVar(value=True)
+        ttk.Checkbutton(toolbar, text="Barras", variable=show_bar).pack(side="left", padx=2)
+        ttk.Checkbutton(toolbar, text="Pastel", variable=show_pie).pack(side="left", padx=2)
+        ttk.Checkbutton(toolbar, text="Saldo",  variable=show_line).pack(side="left", padx=2)
+
+        # ─── Contenedor de resumen ──────────────────────────────────────
+        resumen = tk.Frame(self.content, bg=COLOR_FONDO_GRIS)
+        resumen.pack(fill="both", expand=True)
+
+        def render():
+            clear_frame(resumen)
+            df = pd.DataFrame(list((raw or {}).values()))
+            if df.empty:
+                tk.Label(resumen, text="Sin movimientos registrados.",
+                         bg=COLOR_FONDO_GRIS, fg=COLOR_TEXTO_GRIS,
+                         font=FONT_NORMAL).pack(pady=30)
+                return
+
+            df["fecha"] = pd.to_datetime(df["fecha"], unit="s")
+            # Aplicar rango
+            d0 = date_from.get_date()
+            d1 = date_to.get_date() + timedelta(days=1)
+            df_r = df[(df["fecha"] >= pd.Timestamp(d0)) &
+                      (df["fecha"] <  pd.Timestamp(d1))].copy()
+
+            df_r["signed"] = df_r.apply(lambda r: r["monto"] if r["tipo"]=="Ingreso" else -r["monto"], axis=1)
+            saldo = df_r["signed"].sum()
+            ing   = df_r[df_r["tipo"]=="Ingreso"]["monto"].sum()
+            gas   = df_r[df_r["tipo"]=="Gasto"]["monto"].sum()
+
+            # ─ Tarjetas ────────────────────────────────────────────────
+            cards = tk.Frame(resumen, bg=COLOR_FONDO_GRIS); cards.pack(fill="x")
+            cards.columnconfigure((0,1,2), weight=1, uniform="col")
+            def card(col, tit, val, colr):
+                f = tk.Frame(cards, bg=colr, padx=14, pady=10,
+                             highlightbackground="#d5d9dd",
+                             highlightthickness=1)
+                tk.Label(f, text=tit, font=("Lato",12,"bold"),
+                         bg=colr, fg=COLOR_BLANCO).pack()
+                tk.Label(f, text=f"${val:,.0f}".replace(",","."), font=("Lato",18,"bold"),
+                         bg=colr, fg=COLOR_BLANCO).pack()
+                f.grid(row=0, column=col, padx=6, sticky="ew")
+            card(0, "Saldo",   saldo, COLOR_PRINCIPAL_AZUL)
+            card(1, "Ingresos", ing,  COLOR_VERDE_CRECIMIENTO)
+            card(2, "Gastos",  -gas,  COLOR_ROJO_GASTO)
+
+            # ─ Gráficos ────────────────────────────────────────────────
+            row = tk.Frame(resumen, bg=COLOR_FONDO_GRIS); row.pack(fill="x", pady=8)
+            row.columnconfigure((0,1), weight=1, uniform="row")
+
+            if show_bar.get():
+                fig, ax = plt.subplots(figsize=(5,3))
+                ax.bar(["Ingresos","Gastos"], [ing, gas],
+                       color=[COLOR_VERDE_CRECIMIENTO, COLOR_ROJO_GASTO])
+                ax.set_ylabel("$ COP"); ax.set_title("Ingresos vs Gastos", fontweight="bold")
+                ax.grid(axis="y", linestyle="--", alpha=0.3); fig.tight_layout()
+                c1 = FigureCanvasTkAgg(fig, master=row); c1.draw()
+                c1.get_tk_widget().grid(row=0, column=0, padx=4, sticky="nsew")
+                plt.close(fig)
+
+            if show_pie.get():
+                gastos_cat = (df_r[df_r["tipo"]=="Gasto"]
+                              .groupby("categoria")["monto"].sum())
+                if not gastos_cat.empty:
+                    fig2, ax2 = plt.subplots(figsize=(5,3))
+                    cmap = plt.cm.Set3; cols = cmap(range(len(gastos_cat)))
+                    ax2.pie(gastos_cat, labels=gastos_cat.index,
+                            autopct="%1.0f%%", startangle=90, colors=cols)
+                    ax2.set_title("Distribución de Gastos", fontweight="bold"); fig2.tight_layout()
+                    c2 = FigureCanvasTkAgg(fig2, master=row); c2.draw()
+                    c2.get_tk_widget().grid(row=0, column=1, padx=4, sticky="nsew")
+                    plt.close(fig2)
+
+            if show_line.get():
+                fig3, ax3 = plt.subplots(figsize=(10,3))
+                serie = (df_r.sort_values("fecha")
+                         .set_index("fecha")["signed"]
+                         .cumsum()
+                         .resample("D").last().ffill())
+                ax3.plot(serie.index, serie.values, linewidth=2)
+                ax3.axhline(0, color="gray", linewidth=0.7)
+                ax3.fill_between(serie.index, serie.values, where=serie.values>=0,
+                                 alpha=0.15, color=COLOR_VERDE_CRECIMIENTO)
+                ax3.fill_between(serie.index, serie.values, where=serie.values<0,
+                                 alpha=0.15, color=COLOR_ROJO_GASTO)
+                ax3.set_ylabel("$ COP"); ax3.set_title("Saldo Acumulado", fontweight="bold")
+                ax3.grid(axis="y", linestyle="--", alpha=0.3); fig3.tight_layout()
+                c3 = FigureCanvasTkAgg(fig3, master=resumen); c3.draw()
+                c3.get_tk_widget().pack(pady=(6,10), fill="x")
+                plt.close(fig3)
+
+        btn_apply.configure(command=render)
+        render()
+
+        # ─── Gestión de periodos rápidos ─────────────────────────────────
+        def on_period_change(*_):
+            p = period_var.get()
+            hoy = date.today()
+            date_from.config(state="normal"); date_to.config(state="normal")
+            if p == "Hoy":
+                d0 = d1 = hoy
+            elif p == "Semanal":
+                d0 = hoy - timedelta(days=7); d1 = hoy
+            elif p == "Quincenal":
+                d0 = hoy - timedelta(days=15); d1 = hoy
+            elif p == "Mensual":
+                d0 = hoy.replace(day=1); d1 = hoy
+            elif p == "Trimestral":
+                d0 = (hoy - pd.DateOffset(months=3)).date(); d1 = hoy
+            elif p == "Semestral":
+                d0 = (hoy - pd.DateOffset(months=6)).date(); d1 = hoy
+            elif p == "Anual":
+                d0 = hoy.replace(month=1,day=1); d1 = hoy
+            else:  # personalizado
+                return
+            if d0 < min_date: d0 = min_date
+            if d1 > max_date : d1 = max_date
+            date_from.set_date(d0); date_to.set_date(d1)
+            date_from.config(state="disabled"); date_to.config(state="disabled")
+            render()
+
+        period_var.trace_add("write", on_period_change)
+
+    def _logout(self):
+        import ui_login as login
+        self.win.destroy()
+        login.start(self.root)
+
+# ui_login.py
+
+import os
+import tkinter as tk
+from tkinter import messagebox
+from constants import *
+from utils import center_window
+import firebase_service as fb
+import ui_dashboard as dashboard
+
+# ──────────────────────────────────────────────────────────────
+#  Helper para mostrar / ocultar texto de contraseña
+# ──────────────────────────────────────────────────────────────
+def _toggle(entry: tk.Entry, var: tk.BooleanVar):
+    entry.config(show="" if var.get() else "*")
+
+
+# ──────────────────────────────────────────────────────────────
+#  Ventana de LOGIN
+# ──────────────────────────────────────────────────────────────
+class LoginWindow:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.win = tk.Toplevel(root)
+        self.win.title("Klarity – Iniciar Sesión")
+        self.win.configure(bg=COLOR_FONDO_GRIS)
+        center_window(self.win, 400, 600)
+        self._build()
+        self.win.protocol("WM_DELETE_WINDOW", root.destroy)
+
+    # entry con label
+    def _entry(self, parent, text, show=""):
+        tk.Label(parent, text=text, bg=COLOR_FONDO_GRIS,
+                 fg=COLOR_TEXTO_GRIS, font=FONT_NORMAL).pack(anchor="w")
+        e = tk.Entry(parent, width=34, font=FONT_NORMAL, show=show,
+                     relief="flat", highlightbackground=COLOR_TEXTO_GRIS,
+                     highlightthickness=1)
+        e.pack(pady=(0, 6))
+        return e
+
+    def _build(self):
+        frm = tk.Frame(self.win, bg=COLOR_FONDO_GRIS)
+        frm.pack(pady=20)
+
+        # Logo
+        try:
+            from PIL import Image, ImageTk
+            img = Image.open("assets/klarity_logo.png").resize((130, 130))
+            photo = ImageTk.PhotoImage(img)
+            tk.Label(frm, image=photo, bg=COLOR_FONDO_GRIS).pack()
+            frm.image = photo
+        except Exception:
+            pass
+
+        # Campos
+        self.email = self._entry(frm, "Email:")
+        self.password = self._entry(frm, "Contraseña:", show="*")
+
+        var_show = tk.BooleanVar()
+        tk.Checkbutton(
+            frm,
+            text="Mostrar contraseña",
+            bg=COLOR_FONDO_GRIS,
+            variable=var_show,
+            command=lambda: _toggle(self.password, var_show)
+        ).pack(anchor="w")
+
+        tk.Button(
+            frm,
+            text="Ingresar",
+            bg=COLOR_VERDE_CRECIMIENTO,
+            fg=COLOR_BLANCO,
+            font=FONT_NORMAL,
+            relief="flat",
+            command=self._login
+        ).pack(pady=12)
+
+        # Enlace a Registro
+        link = tk.Label(
+            frm,
+            text="Crear cuenta",
+            fg=COLOR_LINK_AZUL,
+            bg=COLOR_FONDO_GRIS,
+            cursor="hand2"
+        )
+        link.pack()
+        link.bind(
+            "<Button-1>",
+            lambda e: [self.win.destroy(), RegisterWindow(self.root)]
+        )
+
+    def _login(self):
+        email = self.email.get().strip()
+        pwd = self.password.get().strip()
+        if not email or not pwd:
+            messagebox.showerror(
+                "Error",
+                "Completa los campos",
+                parent=self.win
+            )
+            return
+
+        user, err = fb.login_user(email, pwd)
+        if err:
+            # err ya es un mensaje amigable
+            messagebox.showerror(
+                "Inicio de sesión fallido",
+                err,
+                parent=self.win
+            )
+            return
+
+        # crea categorías por defecto si aún no existen
+        fb.ensure_default_categories(user["localId"])
+
+        self.win.destroy()
+        dashboard.DashboardWindow(self.root, user)
+
+
+# ──────────────────────────────────────────────────────────────
+#  Ventana de REGISTRO
+# ──────────────────────────────────────────────────────────────
+class RegisterWindow:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.win = tk.Toplevel(root)
+        self.win.title("Klarity – Registro")
+        self.win.configure(bg=COLOR_FONDO_GRIS)
+        center_window(self.win, 400, 700)
+        self._build()
+
+    # entry reutilizable
+    def _entry(self, parent, text, show=""):
+        tk.Label(parent, text=text, bg=COLOR_FONDO_GRIS,
+                 fg=COLOR_TEXTO_GRIS, font=FONT_NORMAL).pack(anchor="w")
+        e = tk.Entry(parent, width=34, font=FONT_NORMAL, show=show,
+                     relief="flat", highlightbackground=COLOR_TEXTO_GRIS,
+                     highlightthickness=1)
+        e.pack(pady=(0, 6))
+        return e
+
+    def _build(self):
+        frm = tk.Frame(self.win, bg=COLOR_FONDO_GRIS)
+        frm.pack(pady=15)
+
+        # Logo
+        try:
+            from PIL import Image, ImageTk
+            img = Image.open("assets/klarity_logo.png").resize((130, 130))
+            photo = ImageTk.PhotoImage(img)
+            tk.Label(frm, image=photo, bg=COLOR_FONDO_GRIS).pack()
+            frm.image = photo
+        except Exception:
+            pass
+
+        # Campos
+        self.nombre = self._entry(frm, "Nombre completo:")
+        self.email = self._entry(frm, "Email:")
+        self.pwd1 = self._entry(frm, "Contraseña:", show="*")
+        self.pwd2 = self._entry(frm, "Confirmar contraseña:", show="*")
+
+        var_show = tk.BooleanVar()
+        tk.Checkbutton(
+            frm,
+            text="Mostrar contraseñas",
+            bg=COLOR_FONDO_GRIS,
+            variable=var_show,
+            command=lambda: [
+                _toggle(self.pwd1, var_show),
+                _toggle(self.pwd2, var_show)
+            ]
+        ).pack(anchor="w")
+
+        tk.Button(
+            frm,
+            text="Registrar",
+            bg=COLOR_VERDE_CRECIMIENTO,
+            fg=COLOR_BLANCO,
+            font=FONT_NORMAL,
+            relief="flat",
+            command=self._register
+        ).pack(pady=12)
+
+        # Enlace para volver a Login
+        back = tk.Label(
+            frm,
+            text="Volver a inicio de sesión",
+            fg=COLOR_LINK_AZUL,
+            bg=COLOR_FONDO_GRIS,
+            cursor="hand2"
+        )
+        back.pack()
+        back.bind(
+            "<Button-1>",
+            lambda e: [self.win.destroy(), LoginWindow(self.root)]
+        )
+
+    def _register(self):
+        nom = self.nombre.get().strip()
+        email = self.email.get().strip()
+        p1 = self.pwd1.get().strip()
+        p2 = self.pwd2.get().strip()
+
+        if not all([nom, email, p1, p2]):
+            messagebox.showerror(
+                "Error",
+                "Todos los campos son obligatorios",
+                parent=self.win
+            )
+            return
+        if p1 != p2:
+            messagebox.showerror(
+                "Error",
+                "Contraseñas no coinciden",
+                parent=self.win
+            )
+            return
+
+        user, err = fb.register_user(email, p1)
+        if err:
+            messagebox.showerror(
+                "Error",
+                err,
+                parent=self.win
+            )
+            return
+
+        fb.create_or_update_profile(
+            user["localId"],
+            {"nombre": nom, "email": email}
+        )
+        fb.ensure_default_categories(user["localId"])
+
+        messagebox.showinfo(
+            "Listo",
+            "Cuenta creada, inicia sesión",
+            parent=self.win
+        )
+        self.win.destroy()
+        LoginWindow(self.root)
+
+
+# utilidad de módulo
+def start(root: tk.Tk):
+    LoginWindow(root)
+
+# ui_perfil.py – KlarityFinanzasApp
+# ======================================================================================
+# Módulo que construye la vista del perfil del usuario.
+# Permite visualizar y editar el nombre, cambiar la foto de perfil y modificar la contraseña.
+# ======================================================================================
+
+import os
+import tkinter as tk
+from tkinter import messagebox, filedialog
+from PIL import Image, ImageTk, ImageDraw
+
+from constants import *
+from utils import clear_frame
+import firebase_service as fb
+
+def build(frame: tk.Frame, user: dict):
+    clear_frame(frame)
+    uid   = user["localId"]
+    email = user.get("email", "")
+
+    perfil, err = fb.get_profile(uid)
+    if err:
+        messagebox.showerror("Error", f"No se pudo cargar perfil:\n{err}", parent=frame)
+        perfil = {}
+
+    container = tk.Frame(frame, bg=COLOR_FONDO_GRIS)
+    container.pack(fill="both", expand=True, padx=30, pady=30)
+
+    # ─── Título ──────────────────────────────────────────────────────
+    tk.Label(container, text="Mi Perfil", font=FONT_TITLE,
+             bg=COLOR_FONDO_GRIS, fg=COLOR_PRINCIPAL_AZUL).pack(pady=(0,20))
+
+    # ─── Avatar grande ──────────────────────────────────────────────
+    avatar_path = perfil.get("foto","")
+    avatar_img = None
+    if avatar_path:
+        try:
+            img = Image.open(avatar_path).convert("RGBA")
+            img = img.resize((150,150), resample=Image.LANCZOS)
+            mask = Image.new("L", (150,150), 0)
+            draw = ImageDraw.Draw(mask)
+            draw.ellipse((0,0,150,150), fill=255)
+            img.putalpha(mask)
+            avatar_img = ImageTk.PhotoImage(img)
+        except:
+            avatar_img = None
+
+    lbl_avatar = tk.Label(container, image=avatar_img, bg=COLOR_FONDO_GRIS)
+    lbl_avatar.image = avatar_img
+    lbl_avatar.pack(pady=(0,10))
+
+    # ─── Seleccionar nueva foto ──────────────────────────────────────
+    foto_var = tk.StringVar(value=avatar_path)
+    def sel_foto():
+        p = filedialog.askopenfilename(filetypes=[("Imágenes","*.png *.jpg *.jpeg")])
+        if not p: return
+        foto_var.set(p)
+        try:
+            img2 = Image.open(p).convert("RGBA")
+            img2 = img2.resize((150,150), resample=Image.LANCZOS)
+            mask2 = Image.new("L", (150,150), 0)
+            draw2 = ImageDraw.Draw(mask2)
+            draw2.ellipse((0,0,150,150), fill=255)
+            img2.putalpha(mask2)
+            tk2 = ImageTk.PhotoImage(img2)
+            lbl_avatar.configure(image=tk2)
+            lbl_avatar.image = tk2
+        except:
+            pass
+
+    tk.Button(container, text="Cambiar foto",
+              bg=COLOR_PRINCIPAL_AZUL, fg=COLOR_BLANCO,
+              relief="flat", command=sel_foto).pack(pady=(0,20))
+
+    # ─── Nombre completo ─────────────────────────────────────────────
+    frm = tk.Frame(container, bg=COLOR_FONDO_GRIS)
+    frm.pack(pady=(0,20))
+    tk.Label(frm, text="Nombre completo:", bg=COLOR_FONDO_GRIS).grid(row=0, column=0, sticky="e", padx=5)
+    entry_nombre = tk.Entry(frm, width=30)
+    entry_nombre.grid(row=0, column=1, padx=5)
+    entry_nombre.insert(0, perfil.get("nombre",""))
+
+    # ─── Guardar datos personales ────────────────────────────────────
+    def guardar_datos():
+        nuevo = entry_nombre.get().strip()
+        if not nuevo:
+            messagebox.showwarning("Atención","El nombre no puede quedar vacío.", parent=container)
+            return
+
+        datos = {"nombre": nuevo, "foto": foto_var.get()}
+        ok, e = fb.create_or_update_profile(uid, datos)
+        if not ok:
+            messagebox.showerror("Error", f"No se pudo guardar:\n{e}", parent=container)
+            return
+
+        messagebox.showinfo("Éxito","Perfil actualizado.", parent=container)
+
+    tk.Button(container, text="Guardar cambios",
+              bg=COLOR_VERDE_CRECIMIENTO, fg=COLOR_BLANCO,
+              relief="flat", command=guardar_datos).pack(pady=(0,10))
+
+    # ─── Sección Cambiar Contraseña ──────────────────────────────────
+    sec = tk.Frame(container, bg="white", bd=1, relief='solid')
+    sec.pack(fill='x', pady=20)
+    tk.Label(sec, text="Seguridad", font=FONT_NORMAL,
+             bg="white").pack(fill='x', pady=(10,0))
+
+    form2 = tk.Frame(sec, bg="white")
+    form2.pack(padx=20, pady=10)
+
+    tk.Label(form2, text="Contraseña actual:", bg="white").grid(row=0, column=0, sticky="e", pady=5)
+    entry_old = tk.Entry(form2, show="*", width=30)
+    entry_old.grid(row=0, column=1, pady=5)
+
+    tk.Label(form2, text="Nueva contraseña:", bg="white").grid(row=1, column=0, sticky="e", pady=5)
+    entry_new = tk.Entry(form2, show="*", width=30)
+    entry_new.grid(row=1, column=1, pady=5)
+
+    tk.Label(form2, text="Confirmar contraseña:", bg="white").grid(row=2, column=0, sticky="e", pady=5)
+    entry_conf = tk.Entry(form2, show="*", width=30)
+    entry_conf.grid(row=2, column=1, pady=5)
+
+    # Mostrar/ocultar
+    show_var = tk.BooleanVar(value=False)
+    def toggle_show():
+        s = '' if show_var.get() else '*'
+        entry_old.config(show=s)
+        entry_new.config(show=s)
+        entry_conf.config(show=s)
+    chk = tk.Checkbutton(sec, text="Mostrar contraseña", bg="white",
+                         variable=show_var, command=toggle_show)
+    chk.pack(pady=(0,10))
+
+    def cambiar_password():
+        old  = entry_old.get().strip()
+        new  = entry_new.get().strip()
+        conf = entry_conf.get().strip()
+        if not (old and new and conf):
+            messagebox.showwarning("Atención","Complete todos los campos.", parent=sec)
+            return
+        if new != conf:
+            messagebox.showwarning("Atención","La nueva contraseña y su confirmación no coinciden.", parent=sec)
+            return
+
+        ok, err = fb.reauthenticate_user(email, old)
+        if not ok:
+            messagebox.showerror("Error","Contraseña actual incorrecta.", parent=sec)
+            return
+
+        ok2, err2 = fb.update_password(user, new)
+        if not ok2:
+            messagebox.showerror("Error",f"No se pudo cambiar la contraseña:\n{err2}", parent=sec)
+            return
+
+        messagebox.showinfo("Éxito","Contraseña actualizada correctamente.", parent=sec)
+        entry_old.delete(0,'end')
+        entry_new.delete(0,'end')
+        entry_conf.delete(0,'end')
+        show_var.set(False)
+        toggle_show()
+
+    tk.Button(sec, text="Cambiar contraseña",
+              bg=COLOR_VERDE_CRECIMIENTO, fg=COLOR_BLANCO,
+              font=FONT_NORMAL, relief="flat",
+              command=cambiar_password).pack(pady=(0,10))
+
+    container.pack_propagate(False)
+
+# ui_reportes.py – KlarityFinanzasApp
+# ========================================================================================
+# Vista de generación de reportes con filtros de fecha, múltiples gráficos interactivos
+# y análisis interpretado con Gemini. También permite exportar datos a PDF.
+# ========================================================================================
+
+import os, sys
+import tkinter as tk
+from tkinter import ttk, messagebox
+from tkinter.scrolledtext import ScrolledText
+from tkcalendar import DateEntry
+from datetime import datetime, date, timedelta
+import json
+
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+from constants import *
+from utils import clear_frame
+import firebase_service as fb
+
+# ─── Configuración de acceso a config/gemini_config.py ───────────────
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, '..'))
+config_dir = os.path.join(project_root, 'config')
+if config_dir not in sys.path:
+    sys.path.append(config_dir)
+from gemini_config import GEMINI_API_KEY
+
+# ─── Inicialización de Gemini ─────────────────────────────────────────
+model = None
+try:
+    import google.generativeai as genai
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel("gemini-1.5-flash-latest")
+except Exception as e:
+    print(f"[ui_reportes] No se pudo inicializar Gemini: {e}")
+
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
+from io import BytesIO
+
+def build(frame: tk.Frame, user: dict):
+    clear_frame(frame)
+    uid = user['localId']
+
+    # ─── Datos iniciales ────────────────────────────────────────────
+    raw, _ = fb.get_transactions(uid)
+
+    # ─── Cabecera: Título y filtros ─────────────────────────────────
+    header = tk.Frame(frame, bg=COLOR_FONDO_GRIS)
+    header.pack(fill='x', padx=10, pady=10)
+    tk.Label(header, text="Reportes", font=FONT_TITLE,
+             bg=COLOR_FONDO_GRIS, fg=COLOR_PRINCIPAL_AZUL).pack(side='left')
+
+    # Determinar rango de fechas disponibles
+    if raw:
+        fechas = [datetime.fromtimestamp(v['fecha']).date() for v in raw.values() if 'fecha' in v]
+        min_date, max_date = min(fechas), max(fechas)
+    else:
+        max_date = date.today()
+        min_date = max_date - timedelta(days=30)
+
+    # Presets y selectores
+    period_var = tk.StringVar(value='Mensual')
+    presets = ['Personalizado','Hoy','Semanal','Mensual','Anual']
+    cb_period = ttk.Combobox(header, values=presets, textvariable=period_var,
+                             state='readonly', width=12)
+    cb_period.pack(side='left', padx=5)
+    date_from = DateEntry(header, date_pattern='yyyy-mm-dd', mindate=min_date, maxdate=max_date)
+    date_from.set_date(min_date)
+    date_from.pack(side='left', padx=5)
+    date_to = DateEntry(header, date_pattern='yyyy-mm-dd', mindate=min_date, maxdate=max_date)
+    date_to.set_date(max_date)
+    date_to.pack(side='left', padx=5)
+    btn_apply = tk.Button(header, text="Aplicar", bg=COLOR_VERDE_CRECIMIENTO,
+                          fg=COLOR_BLANCO, relief='flat', command=lambda: refresh_dashboard())
+    btn_apply.pack(side='left', padx=5)
+
+    def on_preset(*_):
+        hoy = date.today()
+        p = period_var.get()
+        if p == 'Hoy':
+            date_from.set_date(hoy); date_to.set_date(hoy)
+        elif p == 'Semanal':
+            date_from.set_date(hoy - timedelta(days=7)); date_to.set_date(hoy)
+        elif p == 'Mensual':
+            date_from.set_date(hoy.replace(day=1)); date_to.set_date(hoy)
+        elif p == 'Anual':
+            date_from.set_date(hoy.replace(month=1, day=1)); date_to.set_date(hoy)
+        else:
+            date_from.set_date(min_date); date_to.set_date(max_date)
+        refresh_dashboard()
+    period_var.trace_add('write', on_preset)
+
+    # ─── Resumen y acción Interpretar ────────────────────────────────
+    summary = tk.Frame(frame, bg=COLOR_FONDO_GRIS)
+    summary.pack(fill='x', padx=10, pady=(0,10))
+
+    def make_card(parent, title, color):
+        f = tk.Frame(parent, bg=color, padx=12, pady=8)
+        tk.Label(f, text=title, font=FONT_NORMAL, bg=color, fg=COLOR_BLANCO).pack()
+        lbl = tk.Label(f, text="$0", font=FONT_TITLE, bg=color, fg=COLOR_BLANCO)
+        lbl.pack()
+        return f, lbl
+
+    f_ing, lbl_ing = make_card(summary, "Ingresos", COLOR_VERDE_CRECIMIENTO)
+    f_gas, lbl_gas = make_card(summary, "Gastos", COLOR_ROJO_GASTO)
+    f_sal, lbl_sal = make_card(summary, "Saldo", COLOR_PRINCIPAL_AZUL)
+    for i, f in enumerate((f_ing, f_gas, f_sal)):
+        f.grid(row=0, column=i, padx=6, sticky='ew')
+        summary.columnconfigure(i, weight=1)
+
+    btn_interp = tk.Button(summary, text="Interpretar", bg=COLOR_PRINCIPAL_AZUL,
+                           fg=COLOR_BLANCO, relief='flat', command=lambda: interpretar())
+    btn_interp.grid(row=0, column=3, padx=6)
+
+    # ─── Panel principal ──────────────────────────────────────────────
+    main = tk.Frame(frame, bg=COLOR_FONDO_GRIS)
+    main.pack(fill='both', expand=True, padx=10, pady=5)
+
+    # Izquierda: Selector de series
+    left = tk.Frame(main, bg=COLOR_FONDO_GRIS)
+    left.pack(side='left', fill='y', padx=(0,10))
+    tk.Label(left, text="Series", bg=COLOR_FONDO_GRIS).pack(pady=(0,5))
+    sel_vars = {}
+    opts = [("Gastos x Cat.", 'g1'),
+            ("Ingresos vs Gastos", 'g2'),
+            ("Saldo Acumulado", 'g3'),
+            ("Top 5 Categorías", 'g4')]
+    for txt, key in opts:
+        var = tk.BooleanVar(value=True)
+        sel_vars[key] = var
+        cb = tk.Checkbutton(left, text=txt, variable=var, bg=COLOR_FONDO_GRIS)
+        cb.pack(anchor='w')
+
+    # Centro: Gráficas
+    center = tk.Frame(main, bg=COLOR_FONDO_GRIS)
+    center.pack(side='left', fill='both', expand=True)
+    fig = plt.Figure(figsize=(8,5))
+    canvas = FigureCanvasTkAgg(fig, master=center)
+    canvas.get_tk_widget().pack(fill='both', expand=True)
+
+    # Derecha: Interpretación
+    right = tk.Frame(main, bg=COLOR_FONDO_GRIS)
+    right.pack(side='left', fill='y', padx=(10,0))
+    tk.Label(right, text="Interpretación", bg=COLOR_FONDO_GRIS).pack()
+    txt_interp = ScrolledText(right, width=30, state='disabled')
+    txt_interp.pack(fill='both', expand=True)
+
+    # ─── Funciones auxiliares ────────────────────────────────────────
+    def get_filtered_df():
+        d0 = datetime.combine(date_from.get_date(), datetime.min.time())
+        d1 = datetime.combine(date_to.get_date(), datetime.max.time())
+        df = pd.DataFrame(list((raw or {}).values()))
+        if df.empty: return df
+        df['fecha'] = pd.to_datetime(df['fecha'], unit='s')
+        return df[(df['fecha'] >= d0) & (df['fecha'] <= d1)]
+
+    def refresh_dashboard():
+        df = get_filtered_df()
+        ingresos = df[df['tipo']=='Ingreso']['monto'].sum() if not df.empty else 0
+        gastos   = df[df['tipo']=='Gasto']['monto'].sum()   if not df.empty else 0
+        saldo    = ingresos - gastos
+        lbl_ing.config(text=f"${ingresos:,.0f}".replace(',', '.'))
+        lbl_gas.config(text=f"${gastos:,.0f}".replace(',', '.'))
+        lbl_sal.config(text=f"${saldo:,.0f}".replace(',', '.'))
+
+        fig.clf()
+        fig.subplots_adjust(hspace=0.4, wspace=0.4)
+        series = []
+        df_sorted = df.sort_values('fecha') if not df.empty else df
+
+        if sel_vars['g1'].get() and not df.empty:
+            g1 = df[df['tipo']=='Gasto'].groupby('categoria')['monto'].sum()
+            series.append(('Gastos x Categoría', g1, 'pie'))
+        if sel_vars['g2'].get() and not df.empty:
+            series.append(('Ingresos vs Gastos', pd.Series({'Ingresos': ingresos, 'Gastos': gastos}), 'bar'))
+        if sel_vars['g3'].get() and not df_sorted.empty:
+            df2 = df_sorted.copy()
+            df2['signed'] = df2.apply(lambda r: r['monto'] if r['tipo']=='Ingreso' else -r['monto'], axis=1)
+            serie_acum = df2.set_index('fecha')['signed'].cumsum().resample('D').last().ffill()
+            series.append(('Saldo Acumulado', serie_acum, 'line'))
+        if sel_vars['g4'].get() and not df.empty:
+            g4 = df[df['tipo']=='Gasto'].groupby('categoria')['monto'].sum()
+            g4 = g4.sort_values(ascending=False).head(5)
+            series.append(('Top 5 Categorías', g4, 'barh'))
+
+        for idx, (title, data, kind) in enumerate(series):
+            ax = fig.add_subplot(2,2, idx+1)
+            if kind == 'pie': data.plot.pie(ax=ax, autopct='%1.0f%%', startangle=90)
+            elif kind == 'bar': data.plot.bar(ax=ax)
+            elif kind == 'line': data.plot(ax=ax)
+            elif kind == 'barh': data.plot.barh(ax=ax); ax.invert_yaxis()
+            ax.set_title(title)
+            ax.grid(axis='y', linestyle='--', alpha=0.3)
+
+        canvas.draw()
+
+    def interpretar():
+        df = get_filtered_df()
+        ingresos = df[df['tipo']=='Ingreso']['monto'].sum() if not df.empty else 0
+        gastos   = df[df['tipo']=='Gasto']['monto'].sum()   if not df.empty else 0
+        txt_interp.configure(state='normal')
+        txt_interp.delete('1.0','end')
+        for key, var in sel_vars.items():
+            if not var.get(): continue
+            if key=='g1':
+                s = df[df['tipo']=='Gasto'].groupby('categoria')['monto'].sum().to_dict()
+                title = 'Gastos x Categoría'
+            elif key=='g2':
+                s = {'Ingresos': ingresos, 'Gastos': gastos}
+                title = 'Ingresos vs Gastos'
+            elif key=='g3':
+                df2 = df.copy()
+                df2['signed'] = df2.apply(lambda r: r['monto'] if r['tipo']=='Ingreso' else -r['monto'], axis=1)
+                s = df2.set_index('fecha')['signed'].cumsum().resample('D').last().ffill().dropna().to_dict()
+                title = 'Saldo Acumulado'
+            else:
+                tmp = df[df['tipo']=='Gasto'].groupby('categoria')['monto'].sum()
+                s = tmp.sort_values(ascending=False).head(5).to_dict()
+                title = 'Top 5 Categorías'
+            prompt = f"Interpreta el gráfico '{title}'. Datos: {json.dumps(s, indent=2)}"
+            if model:
+                try: text = model.generate_content(prompt).text
+                except Exception as e: text = f"[Error de Gemini: {e}]"
+            else:
+                text = "[Gemini no disponible]"
+            txt_interp.insert('end', f"--- {title} ---\n{text}\n\n")
+        txt_interp.configure(state='disabled')
+
+    refresh_dashboard()
+
+# ui_splash.py
+# Pantalla de carga con logo, progreso y slogan.
+
+import tkinter as tk
+from tkinter import ttk
+from PIL import Image, ImageTk
+from constants import (COLOR_PRINCIPAL_AZUL, COLOR_VERDE_CRECIMIENTO,
+                       COLOR_FONDO_GRIS, COLOR_BLANCO, FONT_TITLE,FONT_SLOGAN,
+                       APP_SLOGAN)
+from utils import center_window
+
+class SplashScreen:
+    def __init__(self, root: tk.Tk, on_finish):
+        self.root = root
+        self.on_finish = on_finish
+        self.win = tk.Toplevel(root)
+        self.win.overrideredirect(True)
+        self.win.configure(bg=COLOR_PRINCIPAL_AZUL)
+        center_window(self.win, 420, 420)
+        self._build()
+
+    def _build(self):
+        frame = tk.Frame(self.win, bg=COLOR_PRINCIPAL_AZUL)
+        frame.pack(expand=True)
+
+        try:
+            img = Image.open("assets/klarity_logo.png").resize((150, 150))
+            photo = ImageTk.PhotoImage(img)
+            lbl_img = tk.Label(frame, image=photo, bg=COLOR_PRINCIPAL_AZUL)
+            lbl_img.image = photo
+            lbl_img.pack(pady=10)
+        except FileNotFoundError:
+            tk.Label(frame, text="K", font=("Lato", 80, "bold"),
+                     fg=COLOR_BLANCO, bg=COLOR_PRINCIPAL_AZUL).pack()
+
+        tk.Label(frame, text="Klarity", font=FONT_TITLE,
+                 fg=COLOR_BLANCO, bg=COLOR_PRINCIPAL_AZUL).pack()
+        tk.Label(frame, text="Cargando...", fg=COLOR_FONDO_GRIS,
+                 bg=COLOR_PRINCIPAL_AZUL).pack(pady=5)
+
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("green.Horizontal.TProgressbar",
+                        foreground=COLOR_VERDE_CRECIMIENTO,
+                        background=COLOR_VERDE_CRECIMIENTO)
+
+        self.pb = ttk.Progressbar(frame, length=300, mode="determinate",
+                                  style="green.Horizontal.TProgressbar")
+        self.pb.pack(pady=20)
+        tk.Label(frame, text=APP_SLOGAN, fg=COLOR_FONDO_GRIS, bg=COLOR_PRINCIPAL_AZUL, font=FONT_SLOGAN).pack(pady=5)
+        self._animate()
+
+    def _animate(self, step=0):
+        if step <= 100:
+            self.pb["value"] = step
+            self.win.after(25, lambda: self._animate(step + 2))
+        else:
+            self.win.destroy()
+            self.on_finish()
+
+    # util público
+    def show(self):
+        self.win.deiconify()
+
+# ui_transacciones.py
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+from datetime import datetime, date, timedelta
+from tkcalendar import DateEntry
+
+from constants import *
+from utils import clear_frame, money
+import firebase_service as fb
+
+def build(frame: tk.Frame, user):
+    clear_frame(frame)
+    uid = user["localId"]
+
+    # ─── Determinar fechas mín./máx. reales ─────────────────────────────────
+    data_all, _ = fb.get_transactions(uid)
+    fechas = []
+    for v in (data_all or {}).values():
+        try:
+            fechas.append(datetime.fromtimestamp(v["fecha"]).date())
+        except:
+            pass
+    if fechas:
+        min_date = min(fechas)
+        max_date = max(fechas)
+    else:
+        max_date = date.today()
+        min_date = max_date - timedelta(days=30)
+
+    # ─── Variables para orden dinámico ─────────────────────────────────────
+    sort_col     = "Fecha"
+    sort_reverse = False
+    col_map = {
+        "Fecha":        "fecha",
+        "Descripción":  "descripcion",
+        "Monto":        "monto",
+        "Tipo":         "tipo",
+        "Categoría":    "categoria",
+    }
+
+    # ─── Estilos ──────────────────────────────────────────────────────────
+    style = ttk.Style()
+    style.theme_use("clam")
+    style.configure("Treeview", rowheight=24, font=FONT_NORMAL)
+    style.map("Treeview",
+              background=[("selected", COLOR_VERDE_CRECIMIENTO)],
+              foreground=[("selected", COLOR_BLANCO)])
+    style.configure("Treeview.Heading",
+                    background=COLOR_PRINCIPAL_AZUL,
+                    foreground=COLOR_BLANCO,
+                    font=("Lato", 11, "bold"))
+    style.configure("Accent.TButton",
+                    background=COLOR_VERDE_CRECIMIENTO,
+                    foreground=COLOR_BLANCO,
+                    font=FONT_NORMAL,
+                    padding=(8,4))
+    style.map("Accent.TButton",
+              background=[("active", COLOR_VERDE_CRECIMIENTO)])
+    style.configure("Danger.TButton",
+                    background=COLOR_ROJO_GASTO,
+                    foreground=COLOR_BLANCO,
+                    font=FONT_NORMAL,
+                    padding=(8,4))
+    style.map("Danger.TButton",
+              background=[("active", COLOR_ROJO_GASTO)])
+
+    # ─── Toolbar ─────────────────────────────────────────────────────────
+    top = tk.Frame(frame, bg=COLOR_FONDO_GRIS)
+    top.pack(fill="x", pady=(0,6), padx=10)
+    top.columnconfigure(0, weight=1)
+    top.columnconfigure(1, weight=0)
+
+    tk.Label(top, text="Historial de Movimientos",
+             font=FONT_TITLE, bg=COLOR_FONDO_GRIS,
+             fg=COLOR_PRINCIPAL_AZUL).grid(row=0, column=0, sticky="w")
+
+    acciones = tk.Frame(top, bg=COLOR_FONDO_GRIS)
+    acciones.grid(row=0, column=1, sticky="e")
+    btn_editar = ttk.Button(acciones, text="✏️ Editar",   style="Accent.TButton")
+    btn_borrar = ttk.Button(acciones, text="🗑️ Eliminar", style="Danger.TButton")
+    btn_nuevo  = ttk.Button(acciones, text="+ Nuevo",     style="Accent.TButton")
+    btn_editar.grid (row=0, column=0, padx=4)
+    btn_borrar.grid (row=0, column=1, padx=4)
+    btn_nuevo .grid (row=0, column=2, padx=4)
+
+    ttk.Separator(frame, orient="horizontal")\
+        .pack(fill="x", padx=10, pady=(0,6))
+
+    # ─── Filtro de Fechas / Periodos ─────────────────────────────────────
+    filtro = tk.Frame(frame, bg=COLOR_FONDO_GRIS)
+    filtro.pack(fill="x", padx=10, pady=(0,6))
+
+    tk.Label(filtro, text="Periodo:", bg=COLOR_FONDO_GRIS,
+             fg=COLOR_TEXTO_GRIS).pack(side="left")
+    periodos = ["Personalizado","Hoy","Ayer","Últimos 7 días",
+                "Últimos 30 días","Este Mes","Este Año"]
+    period_var = tk.StringVar(value="Personalizado")
+    cb_period = ttk.Combobox(filtro, values=periodos,
+                             state="readonly", width=14,
+                             textvariable=period_var)
+    cb_period.pack(side="left", padx=(4,12))
+
+    tk.Label(filtro, text="Desde:", bg=COLOR_FONDO_GRIS,
+             fg=COLOR_TEXTO_GRIS).pack(side="left")
+    date_from = DateEntry(filtro, date_pattern="yyyy-mm-dd",
+                          mindate=min_date, maxdate=None)
+    date_from.pack(side="left", padx=(4,12))
+    date_from.set_date(min_date)
+
+    tk.Label(filtro, text="Hasta:", bg=COLOR_FONDO_GRIS,
+             fg=COLOR_TEXTO_GRIS).pack(side="left")
+    date_to = DateEntry(filtro, date_pattern="yyyy-mm-dd",
+                        mindate=min_date, maxdate=None)
+    date_to.pack(side="left", padx=(4,12))
+    date_to.set_date(max_date)
+
+    btn_apply = ttk.Button(filtro, text="Aplicar filtro",
+                           style="Accent.TButton")
+    btn_apply.pack(side="left", padx=4)
+    btn_all   = ttk.Button(filtro, text="Mostrar todos",
+                           style="Accent.TButton")
+    btn_all.pack(side="left", padx=4)
+
+    # ─── Tabla con encabezados clickables ─────────────────────────────────
+    cols = ("Fecha","Descripción","Monto","Tipo","Categoría")
+    tree = ttk.Treeview(frame, columns=cols, show="headings", height=15)
+    for c in cols:
+        tree.heading(c, text=c, command=lambda _c=c: sort_by_column(_c))
+        tree.column(c, anchor="center", stretch=True)
+    tree.pack(fill="both", expand=True, padx=10, pady=(0,10))
+
+    # Zebra striping
+    def tag_rows():
+        for i,iid in enumerate(tree.get_children()):
+            tree.item(iid, tags=("odd",) if i%2 else ("even",))
+    tree.tag_configure("odd",  background="#f0f4f7")
+    tree.tag_configure("even", background="#e7edf1")
+
+    # ─── Funciones internas ───────────────────────────────────────────────
+    def sort_by_column(col):
+        nonlocal sort_col, sort_reverse
+        if sort_col == col:
+            sort_reverse = not sort_reverse
+        else:
+            sort_col     = col
+            sort_reverse = False
+        cargar()
+
+    def cargar():
+        tree.delete(*tree.get_children())
+        data, _ = fb.get_transactions(uid)
+        lista = [{"__key":k, **v} for k,v in (data or {}).items()]
+
+        # Filtrar por fechas
+        d0 = date_from.get_date()
+        d1 = date_to.get_date()
+        lista = [t for t in lista
+                 if d0 <= datetime.fromtimestamp(t["fecha"]).date() <= d1]
+
+        # Ordenar según encabezado
+        key = col_map[sort_col]
+        if key in ("fecha","monto"):
+            lista.sort(key=lambda t:t.get(key,0), reverse=sort_reverse)
+        else:
+            lista.sort(key=lambda t:t.get(key,"").lower(), reverse=sort_reverse)
+
+        # Insertar en tabla
+        for t in lista:
+            tree.insert("", "end", iid=t["__key"], values=(
+                datetime.fromtimestamp(t["fecha"]).strftime("%Y-%m-%d"),
+                t.get("descripcion",""),
+                money(t.get("monto",0)),
+                t.get("tipo",""),
+                t.get("categoria","—")
+            ))
+        tag_rows()
+
+    btn_apply.configure(command=cargar)
+
+    def mostrar_todos():
+        date_from.set_date(min_date)
+        date_to.set_date(max_date)
+        cargar()
+    btn_all.configure(command=mostrar_todos)
+
+    def on_period_change(*_):
+        p = period_var.get()
+        hoy = date.today()
+        # restaurar manual
+        date_from.config(state="normal")
+        date_to.config(state="normal")
+        if p=="Hoy":
+            d0=d1=hoy
+        elif p=="Ayer":
+            d0=d1=hoy-timedelta(days=1)
+        elif p=="Últimos 7 días":
+            d0=hoy-timedelta(days=6); d1=hoy
+        elif p=="Últimos 30 días":
+            d0=hoy-timedelta(days=29); d1=hoy
+        elif p=="Este Mes":
+            d0=hoy.replace(day=1); d1=hoy
+        elif p=="Este Año":
+            d0=hoy.replace(month=1,day=1); d1=hoy
+        else:
+            return  # personalizado
+        # clamp
+        if d0 < min_date: d0 = min_date
+        if d1 > date.today(): d1 = date.today()
+        date_from.set_date(d0); date_to.set_date(d1)
+        # deshabilitar si no personalizado
+        if p!="Personalizado":
+            date_from.config(state="disabled")
+            date_to.config(state="disabled")
+        cargar()
+
+    period_var.trace_add("write", on_period_change)
+
+    # ─── Modal Nuevo / Editar ─────────────────────────────────────────────
+    def modal_edit(key=None, data=None):
+        is_edit = key is not None
+        m = tk.Toplevel(frame)
+        m.title("Editar Movimiento" if is_edit else "Nuevo Movimiento")
+        m.grab_set()
+        m.configure(bg=COLOR_FONDO_GRIS)
+
+        lab = dict(sticky="e", padx=5, pady=4)
+        ent = dict(padx=5, pady=4)
+
+        tk.Label(m, text="Descripción:", bg=COLOR_FONDO_GRIS).grid(row=0, column=0, **lab)
+        desc = tk.Entry(m, width=30); desc.grid(row=0, column=1, **ent)
+        tk.Label(m, text="Monto:", bg=COLOR_FONDO_GRIS).grid(row=1, column=0, **lab)
+        em = tk.Entry(m, width=30); em.grid(row=1, column=1, **ent)
+        tk.Label(m, text="Fecha:", bg=COLOR_FONDO_GRIS).grid(row=2, column=0, **lab)
+        # --- Sin mindate/maxdate aquí para no bloquear ---
+        fp = DateEntry(m, date_pattern="yyyy-mm-dd")
+        fp.grid(row=2, column=1, **ent)
+
+        cats,_ = fb.get_categories(uid)
+        names = [c["nombre"] for c in cats.values()] if cats else ["—"]
+        tk.Label(m, text="Categoría:", bg=COLOR_FONDO_GRIS).grid(row=3, column=0, **lab)
+        cb = ttk.Combobox(m, values=names, state="readonly"); cb.grid(row=3, column=1, **ent)
+        cb.current(0)
+
+        tv = tk.StringVar(value="Gasto")
+        ttk.Radiobutton(m, text="Ingreso", variable=tv, value="Ingreso")\
+            .grid(row=4, column=0, pady=4)
+        ttk.Radiobutton(m, text="Gasto",   variable=tv, value="Gasto")\
+            .grid(row=4, column=1, pady=4)
+
+        if is_edit and data:
+            desc.insert(0, data.get("descripcion",""))
+            em.insert(0, str(data.get("monto","")))
+            fp.set_date(datetime.fromtimestamp(data["fecha"]))
+            cb.set(data.get("categoria","—"))
+            tv.set(data.get("tipo","Gasto"))
+
+        def guardar():
+            try:
+                mv = float(em.get())
+            except:
+                messagebox.showerror("Error", "Monto inválido", parent=m)
+                return
+            payload = {
+                "descripcion": desc.get(),
+                "monto": mv,
+                "categoria": cb.get(),
+                "tipo": tv.get(),
+                "fecha": datetime.combine(fp.get_date(), datetime.min.time()).timestamp()
+            }
+            if is_edit:
+                ok, err = fb.update_transaction(uid, key, payload)
+            else:
+                _, err = fb.add_transaction(uid, payload)
+            if err:
+                messagebox.showerror("Error", err, parent=m)
+                return
+            m.destroy()
+            cargar()
+
+        ttk.Button(m, text="Guardar", style="Accent.TButton", command=guardar)\
+            .grid(row=5, columnspan=2, pady=(10,8))
+
+    # ─── Acciones de botones ───────────────────────────────────────────────
+    def borrar_sel():
+        sel = tree.selection()
+        if not sel:
+            messagebox.showwarning("Advertencia","Selecciona algo",parent=frame)
+            return
+        if messagebox.askyesno("Confirmar","¿Eliminar movimiento?",parent=frame):
+            fb.delete_transaction(uid, sel[0])
+            cargar()
+
+    def editar_sel():
+        sel = tree.selection()
+        if not sel:
+            messagebox.showwarning("Advertencia","Selecciona algo",parent=frame)
+            return
+        d, err = fb.get_single_transaction(uid, sel[0])
+        if err or not d:
+            messagebox.showerror("Error", err or "No encontrado", parent=frame)
+            return
+        modal_edit(sel[0], d)
+
+    btn_nuevo .configure(command=lambda: modal_edit())
+    btn_borrar.configure(command=borrar_sel)
+    btn_editar.configure(command=editar_sel)
+
+    # ─── Inicializar ──────────────────────────────────────────────────────
+    mostrar_todos()
+
+# utils.py – KlarityFinanzasApp
+# =====================================================================================
+# Funciones auxiliares reutilizables para manejo de ventanas y formato de datos en Tkinter.
+# Centraliza lógicas comunes para evitar repetición de código en las interfaces.
+# =====================================================================================
+
+"""utils.py
+Helpers reutilizables para Tkinter y formato de datos.
+"""
+
+import tkinter as tk
+
+def clear_frame(frame: tk.Frame) -> None:
+    """Elimina todos los widgets hijos de 'frame'."""
+    for w in frame.winfo_children():
+        w.destroy()
+
+def center_window(win: tk.Toplevel, width: int = None, height: int = None) -> None:
+    """Centra la ventana en la pantalla."""
+    win.update_idletasks()
+    if width is None or height is None:
+        width  = win.winfo_width()
+        height = win.winfo_height()
+    x = (win.winfo_screenwidth() // 2) - (width // 2)
+    y = (win.winfo_screenheight() // 2) - (height // 2)
+    win.geometry(f"{width}x{height}+{x}+{y}")
+
+def money(value: float) -> str:
+    """Devuelve una cadena con formato monetario local (COP)."""
+    return f"${value:,.0f}".replace(",", ".")
+
+# constants.py – KlarityFinanzasApp
+# ======================================================================================
+# Este archivo centraliza la identidad visual (colores, tipografías) y textos reutilizables
+# en toda la aplicación KlarityFinanzasApp.
+# 
+# Cambiar cualquier valor aquí se reflejará inmediatamente en toda la aplicación.
+# ======================================================================================
+
+
+# ======================================================================================
+# 1. PALETA DE COLORES
+# ======================================================================================
+
+# Azul oscuro principal, usado para fondos, elementos destacados y barras laterales.
+COLOR_PRINCIPAL_AZUL = "#2C3E50"
+
+# Verde usado para representar acciones positivas como ingresos o botones de confirmación.
+COLOR_VERDE_CRECIMIENTO = "#2ECC71"
+
+# Rojo para indicar gastos, errores o acciones negativas (por ejemplo, eliminar o cerrar sesión).
+COLOR_ROJO_GASTO = "#E74C3C"
+
+# Gris claro para fondos principales, otorgando un aspecto limpio y claro a las interfaces.
+COLOR_FONDO_GRIS = "#ECF0F1"
+
+# Gris oscuro para textos generales y etiquetas que requieren contraste contra el fondo gris.
+COLOR_TEXTO_GRIS = "#34495E"
+
+# Blanco puro usado principalmente para textos sobre fondos oscuros y botones.
+COLOR_BLANCO = "#FFFFFF"
+
+# Azul brillante utilizado para enlaces o textos clicables.
+COLOR_LINK_AZUL = "#3498DB"
+
+# Rojo intenso para resaltar elementos peligrosos o importantes (acciones irreversibles).
+COLOR_PELIGRO = "#E74C3C"  # Añadido especialmente para alertas de peligro.
+
+
+# ======================================================================================
+# 2. TIPOGRAFÍAS
+# ======================================================================================
+# Nota importante:
+# Estas fuentes asumen que la tipografía "Lato" está instalada en el sistema operativo.
+# Si no está disponible, tkinter usará una fuente alternativa por defecto.
+
+# Fuente negrita estándar para títulos secundarios o resaltados.
+FONT_BOLD = ("Lato", 16, "bold")
+
+# Fuente de gran tamaño y negrita usada principalmente para títulos principales.
+FONT_TITLE = ("Lato", 24, "bold")
+
+# Fuente normal para textos generales en la aplicación.
+FONT_NORMAL = ("Lato", 12)
+
+# Fuente cursiva para mostrar slogans o frases destacadas.
+FONT_SLOGAN = ("Lato", 14, "italic")
+
+# Fuente específica para elementos de menú lateral o superior.
+FONT_MENU = ("Lato", 14)
+
+
+# ======================================================================================
+# 3. CATEGORÍAS POR DEFECTO
+# ======================================================================================
+# Estas categorías se crean automáticamente cuando un usuario se registra por primera vez.
+DEFAULT_CATEGORIES = [
+    {"nombre": "Alimentos",   "tipo": "Gasto"},     # Gastos generales en comida.
+    {"nombre": "Transporte",  "tipo": "Gasto"},     # Gastos en transporte público o privado.
+    {"nombre": "Salario",     "tipo": "Ingreso"},   # Ingreso fijo mensual o regular.
+    {"nombre": "Ocio",        "tipo": "Gasto"},     # Gastos en entretenimiento, hobbies, etc.
+    {"nombre": "Servicios",   "tipo": "Gasto"},     # Servicios básicos (agua, electricidad, internet).
+    {"nombre": "Regalías",    "tipo": "Ingreso"}    # Ingresos por derechos o regalías.
+]
+
+
+# ======================================================================================
+# 4. OTROS TEXTOS REUTILIZABLES
+# ======================================================================================
+
+# Slogan oficial de la aplicación, usado principalmente en splash screens y marketing.
+APP_SLOGAN = "Finanzas claras, Futuro Seguro."
+
+# Nombre oficial de la aplicación (usado en ventanas, títulos y otros elementos).
+APP_NAME = "Klarity"

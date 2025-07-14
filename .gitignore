@@ -1,0 +1,29 @@
+# Entorno virtual
+.venv/
+venv/
+
+# VS Code settings
+.vscode/
+
+# PyInstaller / builds
+dist/
+build/
+*.spec
+
+# Cachés y compilados
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Logs, BD locales
+*.log
+*.db
+*.sqlite3
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Archivos sensibles
+config/gemini_config.py
+config/klarityfinanzasapp-firebase-adminsdk-*.json
