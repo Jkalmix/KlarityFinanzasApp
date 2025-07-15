@@ -27,7 +27,7 @@
 #pip install pillow
 #pip install pyrebase4
 #pip install firebase
-* **Python 3.12.4**
+* **Python 3.13**
 * **Tkinter:** Para la interfaz gráfica de usuario.
 * **Pillow (PIL):** Para el manejo de imágenes (ej. logos).
 * **Pyrebase4:** Para interactuar con Firebase Authentication y Realtime Database.
@@ -68,27 +68,23 @@ KlarityFinanzasApp/
    cd KlarityFinanzasApp
    ```
 
-2. **Configurar entorno virtual** (recomendado)
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate    # macOS/Linux
-   .venv\Scripts\activate     # Windows
-   ```
-
-3. **Instalar dependencias**
+2. **Instalar dependencias**
 
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Configurar Firebase**
+3. **Configurar Firebase**
 
    * Crear proyecto en [Firebase Console](https://console.firebase.google.com/).
    * Habilitar método Email/Password en Authentication.
    * Generar credenciales de "Web App" y copiar en `config/firebase_config.py`.
    * Descargar JSON de cuenta de servicio y ubicar en `config/`.
-
+4. **Configurar Gemini**
+   
+  * en la carpeta config se encontrara el archivo gemini_config.pydonde se debe poner la APYKEY de gemini
+    
 5. **Ejecutar la aplicación**
 
    ```bash
