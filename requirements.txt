@@ -1,24 +1,8 @@
-# Firebase
-pyrebase4==4.7.1
-firebase-admin==6.4.0
-
-# Manejo de imágenes y gráficos
-Pillow==10.3.0
-matplotlib==3.8.4
-
-# Fechas y DataFrames
-pandas==2.2.2
-tkcalendar==1.6.1
-
-# Generación de PDFs
-reportlab==4.2.0
-
-# Google Generative AI (Gemini)
-google-generativeai==0.5.4
-
-# Utilidades varias
-requests==2.32.3
-
-# Recomendado: asegura que setuptools y wheel estén presentes para evitar problemas de instalación de paquetes binarios.
-setuptools>=69.0.0
-wheel>=0.42.0
+pyrebase
+firebase-admin
+google-generativeai
+tkcalendar
+pandas
+matplotlib
+requests
+Pillow
