@@ -8,7 +8,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Construye la ruta al archivo JSON de la cuenta de servicio
 # Desde 'config/', simplemente especificamos el nombre exacto de tu archivo JSON.
-SERVICE_ACCOUNT_KEY_PATH = os.path.join(BASE_DIR, 'klarityfinanzasapp-firebase-adminsdk-fbsvc-592c154bdf.json')
+SERVICE_ACCOUNT_KEY_PATH = os.path.join(BASE_DIR, 'Nombre de tu archivo.json')
 
 
 # -------------------------------------------------------------
@@ -16,13 +16,13 @@ SERVICE_ACCOUNT_KEY_PATH = os.path.join(BASE_DIR, 'klarityfinanzasapp-firebase-a
 # Esta configuración debe coincidir exactamente con la de tu "Aplicación web" en Firebase Console.
 # -------------------------------------------------------------
 FIREBASE_CONFIG = {
-    "apiKey": "AIzaSyAm7q66zLJJHx4AYMg_ax8U_siEtSV2okE",
+    "apiKey": "tu llave",
     "authDomain": "klarityfinanzasapp.firebaseapp.com",
     "databaseURL": "https://klarityfinanzasapp-default-rtdb.firebaseio.com/",
     "projectId": "klarityfinanzasapp",
     "storageBucket": "klarityfinanzasapp.appspot.com", # Corregido: debería ser .appspot.com, no .firebasestorage.app
     "messagingSenderId": "324130409551",
-    "appId": "1:324130409551:web:5b258ae72af9a2d75cae3a",
+    "appId": "Tu appID",
     "measurementId": "G-5RSTHZBMWH", # Opcional, Pyrebase4 no lo usa directamente
 }
 # -------------------------------------------------------------
