@@ -56,7 +56,7 @@ KlarityFinanzasApp es una aplicación de escritorio en Python que ayuda a gestio
 ### 3. Estructura de archivos
 
 ```
-/módulo-principal/
+/KlarityFinanzasApp/
 ├── main.py                # Punto de entrada: inicia splash y login
 ├── ui_splash.py           # Pantalla de carga
 ├── ui_login.py            # Login y registro de usuarios
