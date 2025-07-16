@@ -35,26 +35,23 @@
 ## 📦 Estructura del Proyecto
 
 ```
-KlarityFinanzasApp/
-├── assets/                      # Recursos estáticos (logos, imágenes)
-├── config/
-│   ├── firebase_config.py       # Credenciales y settings de Firebase (Auth + RTDB)
-│   └── klarityfinanzasapp-firebase-adminsdk-*.json  # Service account key
-├── docs/                        # Justificaciones de diseño (paleta, logo)
-├── src/
-│   ├── main.py                  # Punto de entrada y splash screen
-│   ├── firebase_service.py      # Inicialización y funciones CRUD de Firebase
-│   ├── ui_splash.py             # Splash screen con logo y progreso
-│   ├── ui_login.py              # Login y Registro de usuarios
-│   ├── ui_dashboard.py          # Navegación lateral y contenido principal
-│   ├── ui_transacciones.py      # CRUD de movimientos
-│   ├── ui_categorias.py         # CRUD de categorías
-│   ├── ui_reportes.py           # Generación de reportes y gráficos
-│   ├── ui_ai_advisor.py         # Asistente AI con Gemini
-│   ├── ui_perfil.py             # Gestión de perfil y cambio de contraseña
-│   └── utils.py                 # Funciones auxiliares (limpiar frames, centrar ventanas, formateo)
-├── .venv/                       # Entorno virtual (opcional)
-└── README.md                    # Documentación del proyecto
+/KlarityFinanzasApp/
+├── main.py                # Punto de entrada: inicia splash y login
+├── ui_splash.py           # Pantalla de carga
+├── ui_login.py            # Login y registro de usuarios
+├── ui_dashboard.py        # Ventana principal y navegación
+├── ui_transacciones.py    # Gestión de movimientos financieros
+├── ui_categorias.py       # CRUD de categorías
+├── ui_reportes.py         # Generación de reportes y exportación PDF
+├── ui_ai_advisor.py       # Asesor financiero con Gemini
+├── ui_perfil.py           # Visualización y edición de perfil
+├── firebase_service.py    # Inicialización Firebase y funciones CRUD
+├── utils.py               # Funciones auxiliares (limpiar frames, centrar ventanas, formateo)
+├── constants.py           # Colores, tipografías, textos reutilizables
+├── config/                # Claves y configuración
+│   ├── firebase_config.py # FIREBASE_CONFIG, SERVICE_ACCOUNT_KEY_PATH
+│   └── gemini_config.py   # GEMINI_API_KEY
+└── assets/                # Imágenes (logo, íconos)
 ```
 
 ---
